@@ -17,7 +17,13 @@
 // @connect      us-east-1.prod.api.execution-tools.freight.amazon.dev
 // @connect      trans-logistics.amazon.com
 // @connect      amazon.sharepoint.com
+// @connect      api.github.com
+// @connect      raw.githubusercontent.com
 // @connect      *
+// @updateURL    https://raw.githubusercontent.com/vallsach/DDART-Releases/main/D-DART%20(Driver%20Detention%20Analysis%20%26%20Review%20Tool)%20v10.4.user.js
+// @downloadURL  https://raw.githubusercontent.com/vallsach/DDART-Releases/main/D-DART%20(Driver%20Detention%20Analysis%20%26%20Review%20Tool)%20v10.4.user.js
+// @homepageURL  https://github.com/vallsach/DDART-Releases
+// @supportURL   https://github.com/vallsach/DDART-Releases/issues
 // @run-at       document-end
 // ==/UserScript==
 
@@ -145,6 +151,16 @@
      * @property {string} sessionId - Session identifier
      */
 
+    /**
+     * @typedef {Object} UpdateCheckResult
+     * @property {boolean} success - Whether check succeeded
+     * @property {boolean} updateRequired - Whether update is needed
+     * @property {string|null} latestVersion - Latest version from GitHub
+     * @property {string|null} latestFileUrl - URL to download latest version
+     * @property {string|null} latestFileName - Filename of latest version
+     * @property {string|null} error - Error message if failed
+     */
+
     /* ═══════════════════════════════════════════════════════════════════════════
      * SECTION 2: CONFIGURATION (All Magic Numbers Extracted)
      * ═══════════════════════════════════════════════════════════════════════════ */
@@ -161,6 +177,19 @@
             LIST_NAME: 'SOWConfiguration',
             API_URL: 'https://amazon.sharepoint.com/sites/DDART-Config/_api/web/lists/getbytitle(\'SOWConfiguration\')/items',
             REQUEST_TIMEOUT: 30000
+        }),
+
+        // GitHub Configuration for Auto-Updates
+        GITHUB: Object.freeze({
+            USERNAME: 'vallsach',
+            REPOSITORY: 'DDART-Releases',
+            BRANCH: 'main',
+            API_URL: 'https://api.github.com/repos/vallsach/DDART-Releases/contents',
+            RAW_BASE_URL: 'https://raw.githubusercontent.com/vallsach/DDART-Releases/main',
+            FILENAME_PATTERN: /^D-DART\s*\(Driver Detention Analysis & Review Tool\)\s*v([\d.]+)\.user\.js$/i,
+            REQUEST_TIMEOUT: 15000,
+            RETRY_ATTEMPTS: 3,
+            RETRY_DELAY: 2000
         }),
 
         // Cache Settings
@@ -273,7 +302,9 @@
             'smc-na-iad.iad.proxy.amazon.com',
             'trans-logistics.amazon.com',
             'smc.amazon.com',
-            'amazon.sharepoint.com'
+            'amazon.sharepoint.com',
+            'api.github.com',
+            'raw.githubusercontent.com'
         ]),
 
         // Keyboard Shortcuts
@@ -298,7 +329,9 @@
             KEYBOARD_SHORTCUTS: true,
             VIRTUAL_SCROLLING: true,
             CHARGE_PREVIEW: true,
-            FUZZY_SEARCH: true
+            FUZZY_SEARCH: true,
+            AUTO_UPDATE_CHECK: true,
+            FORCE_VERSION_MATCH: true
         }),
 
         START_MINIMIZED: true,
@@ -351,7 +384,10 @@
             RATE_LIMITED: 'Rate limited by server, slowing down...',
             CIRCUIT_BREAKER_OPEN: 'Service temporarily unavailable. Please try again later.',
             INVALID_STATE: 'Invalid application state detected',
-            CLEANUP_FAILED: 'Failed to cleanup resources'
+            CLEANUP_FAILED: 'Failed to cleanup resources',
+            UPDATE_CHECK_FAILED: 'Unable to verify version. Please check your internet connection.',
+            UPDATE_REQUIRED: 'Update required to continue using D-DART.',
+            NO_SCRIPT_FILES_FOUND: 'No D-DART script files found in repository.'
         }),
         SUCCESS: Object.freeze({
             CSV_DOWNLOADED: 'CSV downloaded!',
@@ -365,7 +401,8 @@
             SOW_REFRESHED: 'SOW configuration refreshed',
             BATCH_COMPLETE: (success, failed) => `Batch complete: ${success} processed, ${failed} failed`,
             ACTION_UNDONE: 'Action undone successfully',
-            SETTINGS_SAVED: 'Settings saved'
+            SETTINGS_SAVED: 'Settings saved',
+            VERSION_CHECK_PASSED: 'Version verified successfully'
         }),
         INFO: Object.freeze({
             PROCESSING: 'Processing...',
@@ -382,7 +419,9 @@
             TOKEN_REFRESHING: 'Refreshing authentication token...',
             COOLING_DOWN: 'Cooling down before next chunk...',
             SOW_LOADING: 'Loading SOW configuration...',
-            KEYBOARD_SHORTCUT: (key, action) => `Press ${key} to ${action}`
+            KEYBOARD_SHORTCUT: (key, action) => `Press ${key} to ${action}`,
+            CHECKING_VERSION: 'Checking for updates...',
+            VERSION_UP_TO_DATE: 'You are using the latest version.'
         }),
         COMMENTS: Object.freeze({
             ADD_CHARGE: 'Driver Detention Charge Added',
@@ -403,7 +442,21 @@
             CLOSE_SETTINGS: 'Close settings panel',
             APPROVE_CHARGE: 'Approve charge',
             DECLINE_CHARGE: 'Decline charge',
-            SKIP_ORDER: 'Skip this order'
+            SKIP_ORDER: 'Skip this order',
+            UPDATE_NOW: 'Update D-DART now',
+            RETRY_CONNECTION: 'Retry connection'
+        }),
+        UPDATE: Object.freeze({
+            TITLE: '🚛 D-DART UPDATE REQUIRED',
+            TITLE_ERROR: '🚛 D-DART CONNECTION ERROR',
+            YOUR_VERSION: 'Your version',
+            LATEST_VERSION: 'Latest version',
+            UPDATE_REQUIRED_MSG: 'You must update to continue using D-DART.',
+            DOWNGRADE_REQUIRED_MSG: 'Your version is ahead of the official release. Please install the official version.',
+            UPDATE_BUTTON: '🔄 UPDATE NOW',
+            RETRY_BUTTON: '🔄 RETRY',
+            CONNECTION_ERROR_MSG: 'Unable to connect to update server. Please check your internet connection and try again.',
+            CHECKING: 'Checking for updates...'
         })
     });
 
@@ -457,6 +510,7 @@
         CIRCUIT_BREAKER: 'CIRCUIT_BREAKER_ERROR',
         SOW: 'SOW_ERROR',
         STATE: 'STATE_ERROR',
+        UPDATE: 'UPDATE_ERROR',
         UNKNOWN: 'UNKNOWN_ERROR'
     });
 
@@ -498,7 +552,15 @@
         TOKEN_REFRESH: 'TOKEN_REFRESH',
         SOW_LOAD: 'SOW_LOAD',
         USER_ACTION: 'USER_ACTION',
-        PERFORMANCE: 'PERFORMANCE'
+        PERFORMANCE: 'PERFORMANCE',
+        UPDATE_CHECK: 'UPDATE_CHECK'
+    });
+
+    const UpdateStatus = Object.freeze({
+        CHECKING: 'CHECKING',
+        UP_TO_DATE: 'UP_TO_DATE',
+        UPDATE_REQUIRED: 'UPDATE_REQUIRED',
+        ERROR: 'ERROR'
     });
 
     const OrderStatusMap = Object.freeze({
@@ -582,7 +644,7 @@
         })
     });
 
-    /* ═══════════════════════════════════════════════════════════════════════════
+        /* ═══════════════════════════════════════════════════════════════════════════
      * SECTION 5: UTILITY FUNCTIONS
      * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -743,6 +805,26 @@
      * @returns {Promise<void>}
      */
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    /**
+     * Compare two version strings
+     * @param {string} v1 - First version
+     * @param {string} v2 - Second version
+     * @returns {number} - -1 if v1 < v2, 0 if equal, 1 if v1 > v2
+     */
+    const compareVersions = (v1, v2) => {
+        const parts1 = String(v1).split('.').map(Number);
+        const parts2 = String(v2).split('.').map(Number);
+        const maxLength = Math.max(parts1.length, parts2.length);
+
+        for (let i = 0; i < maxLength; i++) {
+            const p1 = parts1[i] || 0;
+            const p2 = parts2[i] || 0;
+            if (p1 < p2) return -1;
+            if (p1 > p2) return 1;
+        }
+        return 0;
+    };
 
     /* ═══════════════════════════════════════════════════════════════════════════
      * SECTION 6: TELEMETRY SERVICE
@@ -915,7 +997,7 @@
         };
     })();
 
-    /* ═══════════════════════════════════════════════════════════════════════════
+        /* ═══════════════════════════════════════════════════════════════════════════
      * SECTION 8: STATE MANAGEMENT (FIXED)
      * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -953,7 +1035,11 @@
                 },
                 expandedShippers: new Set(),
                 undoStack: [],
-                lastAction: null
+                lastAction: null,
+                updateStatus: UpdateStatus.CHECKING,
+                latestVersion: null,
+                latestFileUrl: null,
+                updateError: null
             };
             this._listeners = new Map();
             this._stateHistory = [];
@@ -1252,7 +1338,7 @@
             warn: (message, data) => addLog('WARN', message, data),
             error: (message, data) => addLog('ERROR', message, data),
 
-            /**
+           /**
              * Generate comprehensive debug report (FIXED: proper serialization)
              * @returns {string}
              */
@@ -1272,12 +1358,15 @@
                     'Token Remaining': TokenManager.getRemainingSeconds() + 's',
                     'SOW Status': AppState.get('sowStatus'),
                     'SOW Shipper Count': AppState.get('sowShipperCount'),
+                    'Update Status': AppState.get('updateStatus'),
+                    'Latest Version': AppState.get('latestVersion'),
                     'State Snapshot': AppState.getSnapshot(),
                     'Circuit Breakers': {
                         smc: circuitBreakers.smc.getState(),
                         fmc: circuitBreakers.fmc.getState(),
                         execution: circuitBreakers.execution.getState(),
-                        sharepoint: circuitBreakers.sharepoint.getState()
+                        sharepoint: circuitBreakers.sharepoint.getState(),
+                        github: circuitBreakers.github.getState()
                     },
                     'Performance Metrics': performanceMetrics,
                     'Telemetry Metrics': telemetryMetrics,
@@ -2130,11 +2219,12 @@
         }
     }
 
-    const circuitBreakers = {
+        const circuitBreakers = {
         smc: new CircuitBreaker('SMC'),
         fmc: new CircuitBreaker('FMC'),
         execution: new CircuitBreaker('Execution'),
-        sharepoint: new CircuitBreaker('SharePoint')
+        sharepoint: new CircuitBreaker('SharePoint'),
+        github: new CircuitBreaker('GitHub')
     };
 
     /* ═══════════════════════════════════════════════════════════════════════════
@@ -2327,6 +2417,7 @@
                 [ErrorType.CIRCUIT_BREAKER]: Messages.ERRORS.CIRCUIT_BREAKER_OPEN,
                 [ErrorType.SOW]: originalMessage,
                 [ErrorType.STATE]: Messages.ERRORS.INVALID_STATE,
+                [ErrorType.UPDATE]: Messages.ERRORS.UPDATE_CHECK_FAILED,
                 [ErrorType.UNKNOWN]: Messages.ERRORS.UNKNOWN_ERROR
             };
             return messages[errorType] || messages[ErrorType.UNKNOWN];
@@ -2825,7 +2916,642 @@
     })();
 
     /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 21: SOW CONFIG MANAGER (FIXED IsActive Parsing)
+     * SECTION 21: VERSION CHECKER (AUTO UPDATE FROM GITHUB)
+     * ═══════════════════════════════════════════════════════════════════════════ */
+
+    const VersionChecker = (() => {
+        let isChecking = false;
+        let checkPromise = null;
+
+        /**
+         * Extract version from filename
+         * @param {string} filename
+         * @returns {string|null}
+         */
+        const extractVersionFromFilename = (filename) => {
+            const match = filename.match(CONFIG.GITHUB.FILENAME_PATTERN);
+            if (match && match[1]) {
+                return match[1];
+            }
+            return null;
+        };
+
+        /**
+         * Find the latest version file from repository contents
+         * @param {Array} files
+         * @returns {Object|null}
+         */
+        const findLatestVersionFile = (files) => {
+            let latestVersion = null;
+            let latestFile = null;
+
+            for (const file of files) {
+                if (file.type !== 'file') continue;
+
+                const version = extractVersionFromFilename(file.name);
+                if (!version) continue;
+
+                if (!latestVersion || compareVersions(version, latestVersion) > 0) {
+                    latestVersion = version;
+                    latestFile = file;
+                }
+            }
+
+            return latestFile ? { version: latestVersion, file: latestFile } : null;
+        };
+
+        /**
+         * Fetch repository contents from GitHub API
+         * @returns {Promise<Array>}
+         */
+        const fetchRepositoryContents = async () => {
+            Logger.info('VersionChecker: Fetching repository contents from GitHub...');
+
+            const response = await GMRequest.fetch({
+                method: 'GET',
+                url: CONFIG.GITHUB.API_URL,
+                headers: {
+                    'Accept': 'application/vnd.github.v3+json',
+                    'User-Agent': `D-DART/${CONFIG.VERSION}`
+                },
+                timeout: CONFIG.GITHUB.REQUEST_TIMEOUT,
+                withCredentials: false
+            });
+
+            if (!Array.isArray(response)) {
+                throw ErrorHandler.create(ErrorType.PARSE, 'Invalid GitHub API response', { response });
+            }
+
+            return response;
+        };
+
+        /**
+         * Build raw download URL for a file
+         * @param {string} filename
+         * @returns {string}
+         */
+        const buildRawUrl = (filename) => {
+            const encodedFilename = encodeURIComponent(filename);
+            return `${CONFIG.GITHUB.RAW_BASE_URL}/${encodedFilename}`;
+        };
+
+        /**
+         * Check for updates with retry
+         * @param {number} attempt
+         * @returns {Promise<UpdateCheckResult>}
+         */
+        const checkWithRetry = async (attempt = 1) => {
+            try {
+                const files = await fetchRepositoryContents();
+                const latest = findLatestVersionFile(files);
+
+                if (!latest) {
+                    return {
+                        success: false,
+                        updateRequired: false,
+                        latestVersion: null,
+                        latestFileUrl: null,
+                        latestFileName: null,
+                        error: Messages.ERRORS.NO_SCRIPT_FILES_FOUND
+                    };
+                }
+
+                const currentVersion = CONFIG.VERSION;
+                const latestVersion = latest.version;
+                const versionsMatch = compareVersions(currentVersion, latestVersion) === 0;
+
+                Logger.info(`VersionChecker: Current=${currentVersion}, Latest=${latestVersion}, Match=${versionsMatch}`);
+
+                return {
+                    success: true,
+                    updateRequired: !versionsMatch,
+                    latestVersion: latestVersion,
+                    latestFileUrl: buildRawUrl(latest.file.name),
+                    latestFileName: latest.file.name,
+                    error: null
+                };
+
+            } catch (error) {
+                Logger.error(`VersionChecker: Check failed (attempt ${attempt})`, error.message);
+
+                if (attempt < CONFIG.GITHUB.RETRY_ATTEMPTS) {
+                    Logger.info(`VersionChecker: Retrying in ${CONFIG.GITHUB.RETRY_DELAY}ms...`);
+                    await sleep(CONFIG.GITHUB.RETRY_DELAY);
+                    return checkWithRetry(attempt + 1);
+                }
+
+                return {
+                    success: false,
+                    updateRequired: false,
+                    latestVersion: null,
+                    latestFileUrl: null,
+                    latestFileName: null,
+                    error: error.message || Messages.ERRORS.UPDATE_CHECK_FAILED
+                };
+            }
+        };
+
+        return {
+            /**
+             * Check for updates
+             * @returns {Promise<UpdateCheckResult>}
+             */
+            async check() {
+                // Prevent concurrent checks
+                if (isChecking && checkPromise) {
+                    Logger.debug('VersionChecker: Already checking, returning existing promise');
+                    return checkPromise;
+                }
+
+                isChecking = true;
+                AppState.set('updateStatus', UpdateStatus.CHECKING);
+
+                Logger.info('VersionChecker: Starting version check...');
+
+                checkPromise = checkWithRetry();
+
+                try {
+                    const result = await checkPromise;
+
+                    Telemetry.track(TelemetryEventType.UPDATE_CHECK, {
+                        success: result.success,
+                        updateRequired: result.updateRequired,
+                        currentVersion: CONFIG.VERSION,
+                        latestVersion: result.latestVersion
+                    });
+
+                    if (result.success) {
+                        AppState.update({
+                            updateStatus: result.updateRequired ? UpdateStatus.UPDATE_REQUIRED : UpdateStatus.UP_TO_DATE,
+                            latestVersion: result.latestVersion,
+                            latestFileUrl: result.latestFileUrl,
+                            updateError: null
+                        });
+                    } else {
+                        AppState.update({
+                            updateStatus: UpdateStatus.ERROR,
+                            latestVersion: null,
+                            latestFileUrl: null,
+                            updateError: result.error
+                        });
+                    }
+
+                    return result;
+
+                } finally {
+                    isChecking = false;
+                    checkPromise = null;
+                }
+            },
+
+            /**
+             * Get current check status
+             * @returns {Object}
+             */
+            getStatus() {
+                return {
+                    isChecking,
+                    updateStatus: AppState.get('updateStatus'),
+                    latestVersion: AppState.get('latestVersion'),
+                    latestFileUrl: AppState.get('latestFileUrl'),
+                    updateError: AppState.get('updateError'),
+                    currentVersion: CONFIG.VERSION
+                };
+            },
+
+            /**
+             * Check if update is required
+             * @returns {boolean}
+             */
+            isUpdateRequired() {
+                return AppState.get('updateStatus') === UpdateStatus.UPDATE_REQUIRED;
+            },
+
+            /**
+             * Check if version check failed
+             * @returns {boolean}
+             */
+            hasError() {
+                return AppState.get('updateStatus') === UpdateStatus.ERROR;
+            },
+
+            /**
+             * Get update URL
+             * @returns {string|null}
+             */
+            getUpdateUrl() {
+                return AppState.get('latestFileUrl');
+            }
+        };
+    })();
+
+
+       /* ═══════════════════════════════════════════════════════════════════════════
+     * SECTION 22: UPDATE BLOCKER UI
+     * ═══════════════════════════════════════════════════════════════════════════ */
+
+    const UpdateBlocker = (() => {
+        let blockerElement = null;
+        let isBlocking = false;
+
+        /**
+         * Create blocker styles
+         * @returns {string}
+         */
+        const getBlockerStyles = () => `
+            #d-dart-update-blocker {
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                background: rgba(0, 0, 0, 0.85) !important;
+                z-index: 2147483647 !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                font-family: 'Amazon Ember', 'Segoe UI', Tahoma, sans-serif !important;
+            }
+
+            .d-dart-update-popup {
+                background: #232F3E !important;
+                border: 3px solid #FF9900 !important;
+                border-radius: 16px !important;
+                padding: 0 !important;
+                max-width: 450px !important;
+                width: 90% !important;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(255, 153, 0, 0.3) !important;
+                animation: d-dart-popup-appear 0.3s ease-out !important;
+                overflow: hidden !important;
+            }
+
+            @keyframes d-dart-popup-appear {
+                from {
+                    opacity: 0;
+                    transform: scale(0.9) translateY(-20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: scale(1) translateY(0);
+                }
+            }
+
+            .d-dart-update-header {
+                background: linear-gradient(135deg, #FF9900 0%, #E88B00 100%) !important;
+                padding: 20px 24px !important;
+                text-align: center !important;
+            }
+
+            .d-dart-update-title {
+                font-size: 22px !important;
+                font-weight: 700 !important;
+                color: #232F3E !important;
+                margin: 0 !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                gap: 10px !important;
+            }
+
+            .d-dart-update-body {
+                padding: 24px !important;
+            }
+
+            .d-dart-version-comparison {
+                background: #1a242f !important;
+                border-radius: 10px !important;
+                padding: 20px !important;
+                margin-bottom: 20px !important;
+            }
+
+            .d-dart-version-row {
+                display: flex !important;
+                justify-content: space-between !important;
+                align-items: center !important;
+                padding: 12px 0 !important;
+                border-bottom: 1px solid #37475A !important;
+            }
+
+            .d-dart-version-row:last-child {
+                border-bottom: none !important;
+            }
+
+            .d-dart-version-label {
+                font-size: 14px !important;
+                color: #888 !important;
+                font-weight: 500 !important;
+            }
+
+            .d-dart-version-value {
+                font-size: 18px !important;
+                font-weight: 700 !important;
+                font-family: 'Consolas', 'Monaco', monospace !important;
+            }
+
+            .d-dart-version-value.current {
+                color: #ff6b6b !important;
+            }
+
+            .d-dart-version-value.latest {
+                color: #00ff88 !important;
+            }
+
+            .d-dart-update-message {
+                text-align: center !important;
+                color: #FFF !important;
+                font-size: 14px !important;
+                line-height: 1.6 !important;
+                margin-bottom: 24px !important;
+                padding: 0 10px !important;
+            }
+
+            .d-dart-update-message.error {
+                color: #ff6b6b !important;
+            }
+
+            .d-dart-update-button {
+                display: block !important;
+                width: 100% !important;
+                padding: 16px 24px !important;
+                background: linear-gradient(135deg, #FF9900 0%, #E88B00 100%) !important;
+                border: none !important;
+                border-radius: 8px !important;
+                color: #232F3E !important;
+                font-size: 16px !important;
+                font-weight: 700 !important;
+                cursor: pointer !important;
+                transition: all 0.2s ease !important;
+                text-decoration: none !important;
+                text-align: center !important;
+                box-shadow: 0 4px 15px rgba(255, 153, 0, 0.3) !important;
+            }
+
+            .d-dart-update-button:hover {
+                transform: translateY(-2px) !important;
+                box-shadow: 0 6px 20px rgba(255, 153, 0, 0.4) !important;
+                background: linear-gradient(135deg, #FFB340 0%, #FF9900 100%) !important;
+            }
+
+            .d-dart-update-button:active {
+                transform: translateY(0) !important;
+            }
+
+            .d-dart-update-button.retry {
+                background: linear-gradient(135deg, #37475A 0%, #485769 100%) !important;
+                color: #FFF !important;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3) !important;
+            }
+
+            .d-dart-update-button.retry:hover {
+                background: linear-gradient(135deg, #485769 0%, #5a6a7a 100%) !important;
+            }
+
+            .d-dart-update-footer {
+                padding: 16px 24px !important;
+                background: #1a242f !important;
+                text-align: center !important;
+                font-size: 11px !important;
+                color: #666 !important;
+            }
+
+            .d-dart-update-footer a {
+                color: #FF9900 !important;
+                text-decoration: none !important;
+            }
+
+            .d-dart-update-footer a:hover {
+                text-decoration: underline !important;
+            }
+
+            .d-dart-spinner {
+                display: inline-block !important;
+                width: 20px !important;
+                height: 20px !important;
+                border: 3px solid rgba(255, 255, 255, 0.3) !important;
+                border-top-color: #FFF !important;
+                border-radius: 50% !important;
+                animation: d-dart-spin 0.8s linear infinite !important;
+                margin-right: 10px !important;
+            }
+
+            @keyframes d-dart-spin {
+                to { transform: rotate(360deg); }
+            }
+
+            .d-dart-checking-text {
+                color: #FFF !important;
+                font-size: 16px !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+            }
+        `;
+
+        /**
+         * Create checking UI
+         * @returns {string}
+         */
+        const createCheckingUI = () => `
+            <div class="d-dart-update-popup">
+                <div class="d-dart-update-header">
+                    <h2 class="d-dart-update-title">🚛 D-DART</h2>
+                </div>
+                <div class="d-dart-update-body">
+                    <div class="d-dart-checking-text">
+                        <span class="d-dart-spinner"></span>
+                        ${Messages.UPDATE.CHECKING}
+                    </div>
+                </div>
+                <div class="d-dart-update-footer">
+                    v${CONFIG.VERSION} • ${CONFIG.AUTHOR}
+                </div>
+            </div>
+        `;
+
+        /**
+         * Create update required UI
+         * @param {string} currentVersion
+         * @param {string} latestVersion
+         * @param {string} updateUrl
+         * @returns {string}
+         */
+        const createUpdateRequiredUI = (currentVersion, latestVersion, updateUrl) => {
+            const isDowngrade = compareVersions(currentVersion, latestVersion) > 0;
+            const message = isDowngrade
+                ? Messages.UPDATE.DOWNGRADE_REQUIRED_MSG
+                : Messages.UPDATE.UPDATE_REQUIRED_MSG;
+
+            return `
+                <div class="d-dart-update-popup">
+                    <div class="d-dart-update-header">
+                        <h2 class="d-dart-update-title">${Messages.UPDATE.TITLE}</h2>
+                    </div>
+                    <div class="d-dart-update-body">
+                        <div class="d-dart-version-comparison">
+                            <div class="d-dart-version-row">
+                                <span class="d-dart-version-label">${Messages.UPDATE.YOUR_VERSION}:</span>
+                                <span class="d-dart-version-value current">v${Helpers.escapeHtml(currentVersion)}</span>
+                            </div>
+                            <div class="d-dart-version-row">
+                                <span class="d-dart-version-label">${Messages.UPDATE.LATEST_VERSION}:</span>
+                                <span class="d-dart-version-value latest">v${Helpers.escapeHtml(latestVersion)}</span>
+                            </div>
+                        </div>
+                        <p class="d-dart-update-message">${message}</p>
+                        <a href="${Helpers.escapeHtml(updateUrl)}" class="d-dart-update-button" id="d-dart-update-btn">
+                            ${Messages.UPDATE.UPDATE_BUTTON}
+                        </a>
+                    </div>
+                    <div class="d-dart-update-footer">
+                        <a href="https://github.com/${CONFIG.GITHUB.USERNAME}/${CONFIG.GITHUB.REPOSITORY}" target="_blank" rel="noopener noreferrer">
+                            View on GitHub
+                        </a>
+                    </div>
+                </div>
+            `;
+        };
+
+        /**
+         * Create error UI
+         * @param {string} errorMessage
+         * @returns {string}
+         */
+        const createErrorUI = (errorMessage) => `
+            <div class="d-dart-update-popup">
+                <div class="d-dart-update-header">
+                    <h2 class="d-dart-update-title">${Messages.UPDATE.TITLE_ERROR}</h2>
+                </div>
+                <div class="d-dart-update-body">
+                    <div class="d-dart-version-comparison">
+                        <div class="d-dart-version-row">
+                            <span class="d-dart-version-label">Status:</span>
+                            <span class="d-dart-version-value current">❌ Connection Failed</span>
+                        </div>
+                    </div>
+                    <p class="d-dart-update-message error">${Messages.UPDATE.CONNECTION_ERROR_MSG}</p>
+                    <button class="d-dart-update-button retry" id="d-dart-retry-btn">
+                        ${Messages.UPDATE.RETRY_BUTTON}
+                    </button>
+                </div>
+                <div class="d-dart-update-footer">
+                    Error: ${Helpers.escapeHtml(errorMessage || 'Unknown error')}
+                </div>
+            </div>
+        `;
+
+        /**
+         * Inject styles
+         */
+        const injectStyles = () => {
+            const styleId = 'd-dart-update-blocker-styles';
+            if (!document.getElementById(styleId)) {
+                const style = document.createElement('style');
+                style.id = styleId;
+                style.textContent = getBlockerStyles();
+                document.head.appendChild(style);
+            }
+        };
+
+        /**
+         * Create blocker element
+         */
+        const createBlocker = () => {
+            if (blockerElement) return;
+
+            injectStyles();
+
+            blockerElement = document.createElement('div');
+            blockerElement.id = 'd-dart-update-blocker';
+            blockerElement.setAttribute('role', 'alertdialog');
+            blockerElement.setAttribute('aria-modal', 'true');
+            blockerElement.setAttribute('aria-labelledby', 'd-dart-update-title');
+            document.body.appendChild(blockerElement);
+        };
+
+        /**
+         * Remove blocker element
+         */
+        const removeBlocker = () => {
+            if (blockerElement) {
+                blockerElement.remove();
+                blockerElement = null;
+            }
+            isBlocking = false;
+        };
+
+        return {
+            /**
+             * Show checking state
+             */
+            showChecking() {
+                createBlocker();
+                blockerElement.innerHTML = createCheckingUI();
+                isBlocking = true;
+            },
+
+            /**
+             * Show update required state
+             * @param {string} currentVersion
+             * @param {string} latestVersion
+             * @param {string} updateUrl
+             */
+            showUpdateRequired(currentVersion, latestVersion, updateUrl) {
+                createBlocker();
+                blockerElement.innerHTML = createUpdateRequiredUI(currentVersion, latestVersion, updateUrl);
+                isBlocking = true;
+
+                // Add click handler for update button
+                const updateBtn = document.getElementById('d-dart-update-btn');
+                if (updateBtn) {
+                    updateBtn.addEventListener('click', () => {
+                        Logger.info('User clicked update button');
+                        Telemetry.track(TelemetryEventType.USER_ACTION, { action: 'update_clicked' });
+                    });
+                }
+            },
+
+            /**
+             * Show error state
+             * @param {string} errorMessage
+             * @param {Function} retryCallback
+             */
+            showError(errorMessage, retryCallback) {
+                createBlocker();
+                blockerElement.innerHTML = createErrorUI(errorMessage);
+                isBlocking = true;
+
+                // Add click handler for retry button
+                const retryBtn = document.getElementById('d-dart-retry-btn');
+                if (retryBtn) {
+                    retryBtn.addEventListener('click', () => {
+                        Logger.info('User clicked retry button');
+                        Telemetry.track(TelemetryEventType.USER_ACTION, { action: 'retry_clicked' });
+                        if (retryCallback) {
+                            retryCallback();
+                        }
+                    });
+                }
+            },
+
+            /**
+             * Hide blocker (version OK)
+             */
+            hide() {
+                removeBlocker();
+            },
+
+            /**
+             * Check if currently blocking
+             * @returns {boolean}
+             */
+            isBlocking() {
+                return isBlocking;
+            }
+        };
+    })();
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+     * SECTION 23: SOW CONFIG MANAGER (FIXED IsActive Parsing)
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const SOWConfigManager = (() => {
@@ -3405,7 +4131,7 @@
     })();
 
     /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 22: DATA HELPERS (ENHANCED)
+     * SECTION 24: DATA HELPERS (ENHANCED)
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const DataHelpers = {
@@ -3722,7 +4448,7 @@
     };
 
     /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 23: FMC API SERVICE (ENHANCED NULL SAFETY)
+     * SECTION 25: FMC API SERVICE (ENHANCED NULL SAFETY)
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const FMCApiService = {
@@ -4043,7 +4769,7 @@
     };
 
     /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 24: SMC API SERVICE (ENHANCED NULL SAFETY)
+     * SECTION 26: SMC API SERVICE (ENHANCED NULL SAFETY)
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const SMCApiService = {
@@ -4287,7 +5013,7 @@
     };
 
     /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 25: DETENTION ANALYZER (FIXED ROUNDING)
+     * SECTION 27: DETENTION ANALYZER (FIXED ROUNDING)
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const DetentionAnalyzer = {
@@ -4709,7 +5435,7 @@
     };
 
     /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 26: HTML GENERATOR (FIXED - No more this reference issues)
+     * SECTION 28: HTML GENERATOR (FIXED - No more this reference issues)
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const HTMLGenerator = {
@@ -5587,7 +6313,7 @@
     };
 
     /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 27: REPORT GENERATOR
+     * SECTION 29: REPORT GENERATOR
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const ReportGenerator = {
@@ -5674,7 +6400,7 @@ ${separator}
     };
 
     /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 28: APPROVAL POPUP (FIXED - Proper Timer Cleanup)
+     * SECTION 30: APPROVAL POPUP (FIXED - Proper Timer Cleanup)
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const ApprovalPopup = (() => {
@@ -6021,7 +6747,7 @@ ${separator}
     })();
 
     /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 29: BATCH PROCESSOR (ENHANCED)
+     * SECTION 31: BATCH PROCESSOR (ENHANCED)
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const BatchProcessor = (() => {
@@ -7206,7 +7932,7 @@ ${separator}
     })();
 
     /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 30: HEALTH CHECK SYSTEM
+     * SECTION 32: HEALTH CHECK SYSTEM
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const HealthCheck = {
@@ -7284,7 +8010,7 @@ ${separator}
     };
 
     /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 31: STYLES
+     * SECTION 33: STYLES
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const Styles = `
@@ -9034,7 +9760,7 @@ ${separator}
     `;
 
     /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 32: UI CONTROLLER
+     * SECTION 34: UI CONTROLLER
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const UIController = (() => {
@@ -10031,11 +10757,50 @@ ${separator}
     // Expose showToast for external use
     const showToast = (message, type) => UIController.showToast(message, type);
 
-    /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 33: APPLICATION INITIALIZATION
+       /* ═══════════════════════════════════════════════════════════════════════════
+     * SECTION 34: APPLICATION INITIALIZATION
      * ═══════════════════════════════════════════════════════════════════════════ */
 
     const App = {
+        /**
+         * Check version and handle update flow
+         * @returns {Promise<boolean>} - true if version is OK, false if blocked
+         */
+        async checkVersion() {
+            if (!CONFIG.FEATURES.AUTO_UPDATE_CHECK) {
+                Logger.info('Auto-update check disabled');
+                return true;
+            }
+
+            Logger.info('Starting version check...');
+            UpdateBlocker.showChecking();
+
+            const result = await VersionChecker.check();
+
+            if (!result.success) {
+                // Network error - block and show retry
+                Logger.error('Version check failed', result.error);
+                UpdateBlocker.showError(result.error, () => this.checkVersion());
+                return false;
+            }
+
+            if (result.updateRequired && CONFIG.FEATURES.FORCE_VERSION_MATCH) {
+                // Version mismatch - block and show update
+                Logger.warn(`Version mismatch: current=${CONFIG.VERSION}, latest=${result.latestVersion}`);
+                UpdateBlocker.showUpdateRequired(
+                    CONFIG.VERSION,
+                    result.latestVersion,
+                    result.latestFileUrl
+                );
+                return false;
+            }
+
+            // Version OK
+            Logger.info('Version check passed');
+            UpdateBlocker.hide();
+            return true;
+        },
+
         /**
          * Initialize application
          */
@@ -10046,10 +10811,22 @@ ${separator}
             Logger.info(`Max Batch Size: ${CONFIG.BATCH.MAX_ORDERS_PER_SESSION}`);
 
             try {
-                // Initialize UI first
+                // STEP 1: Check version FIRST (before any UI)
+                const versionOk = await this.checkVersion();
+
+                if (!versionOk) {
+                    Logger.warn('Application blocked due to version mismatch or connection error');
+                    Telemetry.track(TelemetryEventType.APP_INIT, {
+                        success: false,
+                        reason: 'version_check_failed'
+                    });
+                    return; // Stop initialization - user must update
+                }
+
+                // STEP 2: Initialize UI (only if version is OK)
                 UIController.init();
 
-                // Load SOW configuration from SharePoint
+                // STEP 3: Load SOW configuration from SharePoint
                 Logger.info('Loading SOW configuration from SharePoint...');
                 await SOWConfigManager.init();
 
@@ -10087,6 +10864,7 @@ ${separator}
                 state: AppState.getSnapshot(),
                 tokenStatus: TokenManager.getStatus(),
                 sowStatus: SOWConfigManager.getStatus(),
+                updateStatus: VersionChecker.getStatus(),
                 cacheStats: CacheManager.getStats(),
                 batchState: BatchProcessor.getState(),
                 health: HealthCheck.check(),
@@ -10101,6 +10879,7 @@ ${separator}
         destroy() {
             UIController.destroy();
             SOWConfigManager.clear();
+            UpdateBlocker.hide();
             Logger.info('Application destroyed');
         }
     };
@@ -10127,6 +10906,8 @@ ${separator}
             PerformanceMonitor,
             Telemetry,
             DetentionAnalyzer,
+            VersionChecker,
+            UpdateBlocker,
             CONFIG,
             version: CONFIG.VERSION,
             edition: CONFIG.APP_SUBTITLE,
@@ -10155,6 +10936,12 @@ ${separator}
                 previewCharge: (params) => DetentionAnalyzer.previewCharge(params),
                 getPerformance: () => PerformanceMonitor.getMetrics(),
                 getTelemetry: () => Telemetry.getMetrics(),
+                // Version checker test functions
+                checkVersion: () => VersionChecker.check(),
+                getVersionStatus: () => VersionChecker.getStatus(),
+                forceUpdatePopup: () => UpdateBlocker.showUpdateRequired(CONFIG.VERSION, '99.0', 'https://example.com'),
+                forceErrorPopup: () => UpdateBlocker.showError('Test error', () => console.log('Retry clicked')),
+                hideBlocker: () => UpdateBlocker.hide(),
                 resetCircuitBreakers: () => {
                     Object.values(circuitBreakers).forEach(cb => cb.reset());
                     Logger.info('All circuit breakers reset');
