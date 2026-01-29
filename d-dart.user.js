@@ -8341,11 +8341,299 @@ ${separator}
     };
 })();
 
-    /* ═══════════════════════════════════════════════════════════════════════════
-     * SECTION 33: APPLICATION INITIALIZATION
-     * ═══════════════════════════════════════════════════════════════════════════ */
+   /* ═══════════════════════════════════════════════════════════════════════════
+ * SECTION 33: APPLICATION INITIALIZATION
+ * ═══════════════════════════════════════════════════════════════════════════ */
 
- const App = {
+/**
+ * Update Modal Styles - Injected BEFORE version check
+ * Must be separate from main styles so modal displays correctly
+ */
+const UpdateModalStyles = `
+    #d-dart-update-overlay {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        background: rgba(0, 0, 0, 0.95) !important;
+        z-index: 2147483647 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-family: 'Amazon Ember', 'Segoe UI', Tahoma, sans-serif !important;
+        animation: d-dart-update-fadeIn 0.3s ease !important;
+    }
+
+    @keyframes d-dart-update-fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @keyframes d-dart-update-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    @keyframes d-dart-update-bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+    }
+
+    @keyframes d-dart-update-shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-5px); }
+        75% { transform: translateX(5px); }
+    }
+
+    .d-dart-update-modal {
+        background: linear-gradient(145deg, #232F3E 0%, #1a242f 100%) !important;
+        border: 3px solid #FF9900 !important;
+        border-radius: 16px !important;
+        padding: 40px !important;
+        max-width: 480px !important;
+        width: 90vw !important;
+        text-align: center !important;
+        box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6), 0 0 40px rgba(255, 153, 0, 0.2) !important;
+        animation: d-dart-update-slideIn 0.4s ease !important;
+        box-sizing: border-box !important;
+    }
+
+    @keyframes d-dart-update-slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-30px) scale(0.95);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    .d-dart-update-modal.offline {
+        border-color: #ff6b6b !important;
+        box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6), 0 0 40px rgba(255, 107, 107, 0.2) !important;
+    }
+
+    .d-dart-update-modal * {
+        box-sizing: border-box !important;
+        font-family: 'Amazon Ember', 'Segoe UI', Tahoma, sans-serif !important;
+    }
+
+    .d-dart-update-icon {
+        font-size: 64px !important;
+        margin-bottom: 20px !important;
+        display: block !important;
+        line-height: 1 !important;
+    }
+
+    .d-dart-update-icon.checking {
+        animation: d-dart-update-spin 1s linear infinite !important;
+    }
+
+    .d-dart-update-icon.upgrade {
+        animation: d-dart-update-bounce 1s ease infinite !important;
+    }
+
+    .d-dart-update-icon.downgrade {
+        animation: d-dart-update-bounce 1s ease infinite !important;
+    }
+
+    .d-dart-update-icon.offline {
+        animation: d-dart-update-shake 0.5s ease infinite !important;
+    }
+
+    .d-dart-update-title {
+        font-size: 24px !important;
+        font-weight: 700 !important;
+        color: #FF9900 !important;
+        margin-bottom: 15px !important;
+        text-shadow: 0 2px 10px rgba(255, 153, 0, 0.3) !important;
+    }
+
+    .d-dart-update-modal.offline .d-dart-update-title {
+        color: #ff6b6b !important;
+        text-shadow: 0 2px 10px rgba(255, 107, 107, 0.3) !important;
+    }
+
+    .d-dart-update-body {
+        font-size: 14px !important;
+        color: #CCC !important;
+        margin-bottom: 25px !important;
+        line-height: 1.6 !important;
+    }
+
+    .d-dart-update-versions {
+        background: #37475A !important;
+        border-radius: 10px !important;
+        padding: 20px !important;
+        margin-bottom: 25px !important;
+    }
+
+    .d-dart-update-version-row {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        padding: 8px 0 !important;
+        border-bottom: 1px solid #485769 !important;
+    }
+
+    .d-dart-update-version-row:last-child {
+        border-bottom: none !important;
+    }
+
+    .d-dart-update-version-label {
+        font-size: 13px !important;
+        color: #888 !important;
+        font-weight: 500 !important;
+    }
+
+    .d-dart-update-version-value {
+        font-size: 16px !important;
+        font-weight: 700 !important;
+    }
+
+    .d-dart-update-version-value.local {
+        color: #ff6b6b !important;
+    }
+
+    .d-dart-update-version-value.remote {
+        color: #00ff88 !important;
+    }
+
+    .d-dart-update-version-value.date {
+        color: #4dabf7 !important;
+        font-size: 13px !important;
+    }
+
+    .d-dart-update-notes {
+        background: #1a242f !important;
+        border: 1px solid #485769 !important;
+        border-radius: 8px !important;
+        padding: 15px !important;
+        margin-bottom: 25px !important;
+        text-align: left !important;
+        max-height: 150px !important;
+        overflow-y: auto !important;
+    }
+
+    .d-dart-update-notes-title {
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        color: #FF9900 !important;
+        text-transform: uppercase !important;
+        margin-bottom: 10px !important;
+        letter-spacing: 0.5px !important;
+    }
+
+    .d-dart-update-notes-list {
+        margin: 0 !important;
+        padding-left: 20px !important;
+        font-size: 12px !important;
+        color: #CCC !important;
+        line-height: 1.8 !important;
+    }
+
+    .d-dart-update-notes-list li {
+        margin-bottom: 5px !important;
+    }
+
+    .d-dart-update-notes::-webkit-scrollbar {
+        width: 4px !important;
+    }
+
+    .d-dart-update-notes::-webkit-scrollbar-track {
+        background: #232F3E !important;
+    }
+
+    .d-dart-update-notes::-webkit-scrollbar-thumb {
+        background: #485769 !important;
+        border-radius: 2px !important;
+    }
+
+    .d-dart-update-button {
+        display: inline-block !important;
+        padding: 16px 40px !important;
+        background: linear-gradient(135deg, #FF9900 0%, #E88B00 100%) !important;
+        border: none !important;
+        border-radius: 10px !important;
+        color: #232F3E !important;
+        font-size: 16px !important;
+        font-weight: 700 !important;
+        cursor: pointer !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(255, 153, 0, 0.4) !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
+    }
+
+    .d-dart-update-button:hover {
+        background: linear-gradient(135deg, #FEBD69 0%, #FF9900 100%) !important;
+        transform: translateY(-3px) !important;
+        box-shadow: 0 8px 25px rgba(255, 153, 0, 0.5) !important;
+    }
+
+    .d-dart-update-button:active {
+        transform: translateY(-1px) !important;
+    }
+
+    .d-dart-update-button.retry {
+        background: linear-gradient(135deg, #37475A 0%, #485769 100%) !important;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3) !important;
+    }
+
+    .d-dart-update-button.retry:hover {
+        background: linear-gradient(135deg, #485769 0%, #5a6b7d 100%) !important;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4) !important;
+    }
+
+    .d-dart-update-button:disabled {
+        opacity: 0.6 !important;
+        cursor: not-allowed !important;
+        transform: none !important;
+    }
+
+    .d-dart-update-instructions {
+        font-size: 11px !important;
+        color: #666 !important;
+        margin-top: 20px !important;
+        line-height: 1.5 !important;
+    }
+
+    .d-dart-update-error-details {
+        background: rgba(255, 107, 107, 0.1) !important;
+        border: 1px solid rgba(255, 107, 107, 0.3) !important;
+        border-radius: 8px !important;
+        padding: 15px !important;
+        margin-bottom: 25px !important;
+    }
+
+    .d-dart-update-error-label {
+        font-size: 11px !important;
+        color: #888 !important;
+        text-transform: uppercase !important;
+        display: block !important;
+        margin-bottom: 5px !important;
+    }
+
+    .d-dart-update-error-message {
+        font-size: 13px !important;
+        color: #ff6b6b !important;
+        font-weight: 500 !important;
+    }
+
+    .d-dart-update-spinner {
+        width: 40px !important;
+        height: 40px !important;
+        border: 4px solid #37475A !important;
+        border-top-color: #FF9900 !important;
+        border-radius: 50% !important;
+        margin: 20px auto !important;
+        animation: d-dart-update-spin 1s linear infinite !important;
+    }
+`;
+
+const App = {
     /**
      * Initialize application
      */
@@ -8356,7 +8644,13 @@ ${separator}
         Logger.info(`Max Batch Size: ${CONFIG.BATCH.MAX_ORDERS_PER_SESSION}`);
 
         try {
-            // STEP 1: Check version FIRST (before anything else)
+            // STEP 0: Inject update modal styles FIRST (before version check)
+            // This ensures the modal is styled properly even before main UI loads
+            if (CONFIG.FEATURES.AUTO_UPDATE) {
+                GM_addStyle(UpdateModalStyles);
+            }
+
+            // STEP 1: Check version (before anything else)
             if (CONFIG.FEATURES.AUTO_UPDATE) {
                 Logger.info('Checking for updates...');
                 const versionStatus = await VersionManager.check();
